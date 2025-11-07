@@ -46,7 +46,7 @@ jobs:
             git commit -m "Auto-update Pixelsports playlists ($(date -u '+%Y-%m-%d %H:%M UTC'))"
             git push
           else
-            echo "✅ No changes to commit"
+            echo "No changes to commit"
           fi
 
   deploy-pages:
