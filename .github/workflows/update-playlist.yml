@@ -1,4 +1,4 @@
-name: Update and Deploy Pixelsports Playlists
+name: Update Pixelsports Playlist
 
 on:
   schedule:
