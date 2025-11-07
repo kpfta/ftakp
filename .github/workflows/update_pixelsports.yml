@@ -2,7 +2,7 @@ name: Update Pixelsports Playlist
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # every 6 hours
+    - cron: '0 */6 * * *'   # Runs every 6 hours
   workflow_dispatch:
 
 jobs:
@@ -18,9 +18,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install --upgrade urllib3
-
       - name: Run Pixelsports script
         run: python pixelsports.py
 
@@ -28,9 +25,9 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add Pixelsports.m3u8 Pixelsports_Tivimate.m3u8 Pixelsports_categories.txt
+          git add -A
           if ! git diff --staged --quiet; then
-            git commit -m "Auto-update Pixelsports playlists ($(date -u '+%Y-%m-%d %H:%M UTC'))"
-            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main
+            git commit -m "Auto-update Pixelsports playlist ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+            git push origin HEAD:main
           else
             echo "No changes to commit"
