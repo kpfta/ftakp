@@ -168,7 +168,7 @@ def main():
                 f.write(build_tivimate(league_events))
             print(f"  [+] Saved: {filename}")
 
-        print("\n✅ All playlists generated successfully.")
+        print("\n All playlists generated successfully.")
 
     except (URLError, HTTPError) as e:
         print(f"[!] Network error: {e}")
