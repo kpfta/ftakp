@@ -30,6 +30,6 @@ jobs:
           git add -A
           if ! git diff --staged --quiet; then
             git commit -m "Auto-update Pixelsports playlist ($(date -u '+%Y-%m-%d %H:%M UTC'))"
-            git push https://x-access-token:${GH_TOKEN}@github.com/<username>/<repo>.git HEAD:main
+            git push https://x-access-token:${GH_TOKEN}@github.com/kpfta/ftakp.git HEAD:main
           else
             echo "No changes to commit"
