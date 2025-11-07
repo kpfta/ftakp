@@ -3,25 +3,24 @@ import urllib.request
 import ssl
 from urllib.error import URLError, HTTPError
 from datetime import datetime, timezone, timedelta
-from urllib.parse import quote
+import urllib.parse
 
 # Disable SSL certificate verification globally
 ssl._create_default_https_context = ssl._create_unverified_context
 
 BASE = "https://pixelsport.tv"
 API_EVENTS = f"{BASE}/backend/liveTV/events"
-
 OUTPUT_FILE = "Pixelsports.m3u8"
-TIVIMATE_FILE = "Pixelsports_Tivimate.m3u8"
-CATEGORIES_FILE = "Pixelsports_categories.txt"
+OUTPUT_FILE_TIVIMATE = "Pixelsports_Tivimate.m3u8"
+OUTPUT_FILE_CATEGORIES = "Pixelsports_categories.txt"
 
-# User-Agent for VLC / Tivimate
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
-ENCODED_UA = quote(USER_AGENT)
-REFERER = f"{BASE}/"
-ICY = "1"
+# User agent for VLC/Tivimate
+VLC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
+VLC_USER_AGENT_ENCODED = urllib.parse.quote(VLC_USER_AGENT)
+VLC_REFERER = f"{BASE}/"
+VLC_ORIGIN = f"{BASE}/"
+VLC_ICY = "1"
 
-# League info for logos and grouping
 LEAGUE_INFO = {
     "NFL": ("NFL.Dummy.us", "http://drewlive24.duckdns.org:9000/Logos/Maxx.png", "NFL"),
     "MLB": ("MLB.Baseball.Dummy.us", "http://drewlive24.duckdns.org:9000/Logos/Baseball3.png", "MLB"),
@@ -45,7 +44,7 @@ def utc_to_eastern(utc_str):
         return ""
 
 def get_game_status(utc_str):
-    """Return game status: Finished, Started, or countdown."""
+    """Determine game status and return status string."""
     try:
         utc_dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(timezone.utc)
         now = datetime.now(timezone.utc)
@@ -57,26 +56,27 @@ def get_game_status(utc_str):
         else:
             hours = int(time_diff // 3600)
             minutes = int((time_diff % 3600) // 60)
-            return f"In {hours}h {minutes}m" if hours > 0 else f"In {minutes}m"
+            if hours > 0:
+                return f"In {hours}h {minutes}m"
+            else:
+                return f"In {minutes}m"
     except Exception:
         return ""
 
 def fetch_json(url):
-    """Fetch JSON data from URL."""
     headers = {
-        "User-Agent": USER_AGENT,
-        "Referer": REFERER,
+        "User-Agent": VLC_USER_AGENT,
+        "Referer": VLC_REFERER,
         "Accept": "*/*",
         "Accept-Encoding": "identity",
         "Connection": "close",
-        "Icy-MetaData": ICY,
+        "Icy-MetaData": VLC_ICY,
     }
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 def collect_links_with_labels(event):
-    """Collect valid stream URLs with labels (Home/Away/Alt)."""
     links = []
     comp1_home = event.get("competitors1_homeAway", "").lower() == "home"
     for i in range(1, 4):
@@ -84,23 +84,28 @@ def collect_links_with_labels(event):
         try:
             link = event["channel"][key]
             if link and link.lower() != "null":
-                label = "Home" if (i == 1 and comp1_home) else "Away" if (i == 2 and comp1_home) else "Alt"
+                if i == 1:
+                    label = "Home" if comp1_home else "Away"
+                elif i == 2:
+                    label = "Away" if comp1_home else "Home"
+                else:
+                    label = "Alt"
                 links.append((link, label))
         except KeyError:
             continue
     return links
 
 def get_league_info(league_name):
-    """Return tvg-id, logo, and display name."""
     for key, (tvid, logo, display_name) in LEAGUE_INFO.items():
         if key.lower() in league_name.lower():
             return tvid, logo, display_name
     return ("Pixelsports.Dummy.us", "", "Live Sports")
 
-def build_m3u(events):
-    """Generate standard M3U8 playlist."""
-    lines = ["#EXTM3U"]
+def build_playlists(events):
+    m3u_lines = ["#EXTM3U"]
+    tivimate_lines = ["#EXTM3U"]
     categories_set = set()
+
     for ev in events:
         title = ev.get("match_name", "Unknown Event").strip()
         logo = ev.get("competitors1_logo", "")
@@ -111,38 +116,25 @@ def build_m3u(events):
             title = f"{title} - {time_et}"
         if status:
             title = f"{title} - {status}"
+
         league = ev.get("channel", {}).get("TVCategory", {}).get("name", "LIVE")
         tvid, group_logo, group_display = get_league_info(league)
         categories_set.add(group_display)
-        if not logo:
-            logo = group_logo
-        for link, label in collect_links_with_labels(ev):
-            lines.append(f'#EXTINF:-1 tvg-id="{tvid}" tvg-logo="{logo}" group-title="Pixelsports - {group_display} - {label}",{title}')
-            lines.append(link)
-    return "\n".join(lines), sorted(categories_set)
 
-def build_tivimate(events):
-    """Generate Tivimate-compatible playlist with pipe headers."""
-    lines = ["#EXTM3U"]
-    for ev in events:
-        title = ev.get("match_name", "Unknown Event").strip()
-        logo = ev.get("competitors1_logo", "")
-        date_str = ev.get("date")
-        time_et = utc_to_eastern(date_str)
-        status = get_game_status(date_str)
-        if time_et:
-            title = f"{title} - {time_et}"
-        if status:
-            title = f"{title} - {status}"
-        league = ev.get("channel", {}).get("TVCategory", {}).get("name", "LIVE")
-        tvid, group_logo, group_display = get_league_info(league)
         if not logo:
             logo = group_logo
+
         for link, label in collect_links_with_labels(ev):
-            header = f"referer={REFERER}/|origin={REFERER}|user-agent={ENCODED_UA}"
-            lines.append(f'#EXTINF:-1 tvg-id="{tvid}" tvg-logo="{logo}" group-title="Pixelsports - {group_display} - {label}",{title}')
-            lines.append(f"{link}?{header}")
-    return "\n".join(lines)
+            # Normal M3U
+            m3u_lines.append(f'#EXTINF:-1 tvg-id="{tvid}" tvg-logo="{logo}" group-title="Pixelsports - {group_display} - {label}",{title}')
+            m3u_lines.append(link)
+
+            # Tivimate style (pipe-delimited headers)
+            tivimate_header = f'referer={VLC_REFERER}|origin={VLC_ORIGIN}|user-agent={VLC_USER_AGENT_ENCODED}'
+            tivimate_lines.append(f'#EXTINF:-1 tvg-id="{tvid}" tvg-logo="{logo}" group-title="Pixelsports - {group_display} - {label}",{title}')
+            tivimate_lines.append(f'{link}?{tivimate_header}')
+
+    return "\n".join(m3u_lines), "\n".join(tivimate_lines), "\n".join(sorted(categories_set))
 
 def main():
     print("[*] Fetching PixelSport live events…")
@@ -153,21 +145,17 @@ def main():
             print("[-] No live events found.")
             return
 
-        # Standard playlist + categories
-        playlist, categories = build_m3u(events)
+        playlist, tivimate_playlist, categories = build_playlists(events)
+
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             f.write(playlist)
-        with open(CATEGORIES_FILE, "w", encoding="utf-8") as f:
-            f.write("\n".join(categories))
-
-        # Tivimate playlist
-        tivimate_playlist = build_tivimate(events)
-        with open(TIVIMATE_FILE, "w", encoding="utf-8") as f:
+        with open(OUTPUT_FILE_TIVIMATE, "w", encoding="utf-8") as f:
             f.write(tivimate_playlist)
+        with open(OUTPUT_FILE_CATEGORIES, "w", encoding="utf-8") as f:
+            f.write(categories)
 
-        print(f"[+] Saved playlist: {OUTPUT_FILE} ({len(events)} events)")
-        print(f"[+] Saved Tivimate playlist: {TIVIMATE_FILE}")
-        print(f"[+] Saved categories: {CATEGORIES_FILE}")
+        print(f"[+] Saved playlists and categories ({len(events)} events).")
+
     except (URLError, HTTPError) as e:
         print(f"[!] Error fetching data: {e}")
     except Exception as e:
